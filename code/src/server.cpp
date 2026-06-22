@@ -10,6 +10,7 @@
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 namespace chatroom {
@@ -17,6 +18,7 @@ namespace chatroom {
 namespace {
 
 constexpr int kListenBacklog = 16;
+constexpr std::size_t kRecvBufferBytes = 512;
 
 void print_errno(const std::string& action)
 {
@@ -25,7 +27,10 @@ void print_errno(const std::string& action)
 
 }  // namespace
 
-ChatServer::ChatServer(std::uint16_t port) : port_(port) {}
+ChatServer::ChatServer(std::uint16_t port, std::string log_path)
+    : port_(port), logger_(std::move(log_path))
+{
+}
 
 ChatServer::~ChatServer()
 {
@@ -77,6 +82,7 @@ bool ChatServer::start()
 
     port_ = ntohs(address.sin_port);
     running_ = true;
+    logger_.log_startup(port_);
     return true;
 }
 
@@ -188,11 +194,181 @@ bool ChatServer::handle_new_client()
 
 void ChatServer::handle_client_readable(int fd)
 {
-    char buffer[256];
-    ssize_t bytes_read = recv(fd, buffer, sizeof(buffer), 0);
-    if (bytes_read <= 0) {
+    ClientInfo* client = clients_.find_by_fd(fd);
+    if (client == nullptr) {
         close_client(fd);
+        return;
     }
+
+    char buffer[kRecvBufferBytes];
+    ssize_t bytes_read = recv(fd, buffer, sizeof(buffer), 0);
+    if (bytes_read == 0) {
+        handle_disconnect(fd, false);
+        return;
+    }
+    if (bytes_read < 0) {
+        if (errno == EINTR) {
+            return;
+        }
+        logger_.log_error("recv failed on fd " + std::to_string(fd) + ": " + std::strerror(errno));
+        handle_disconnect(fd, false);
+        return;
+    }
+
+    std::string bytes(buffer, static_cast<std::size_t>(bytes_read));
+    std::vector<std::string> lines = client->receive_buffer.append(bytes);
+    for (const std::string& line : lines) {
+        process_client_line(fd, line);
+        if (clients_.find_by_fd(fd) == nullptr) {
+            return;
+        }
+    }
+
+    ClientInfo* current = clients_.find_by_fd(fd);
+    if (current != nullptr && current->receive_buffer.pending().size() > kMaxMessageBytes) {
+        if (!send_response(fd, make_error("message too long"))) {
+            handle_disconnect(fd, false);
+            return;
+        }
+        current->receive_buffer.clear();
+    }
+}
+
+void ChatServer::process_client_line(int fd, const std::string& line)
+{
+    Command command = parse_client_command(line);
+    if (command.type == CommandType::Invalid) {
+        if (!send_response(fd, make_error(command.error))) {
+            handle_disconnect(fd, false);
+        }
+        logger_.log_error("invalid command from fd " + std::to_string(fd) + ": " + command.error);
+        return;
+    }
+
+    ClientInfo* client = clients_.find_by_fd(fd);
+    if (client == nullptr) {
+        return;
+    }
+
+    if (!client->logged_in) {
+        if (command.type == CommandType::Login) {
+            handle_login(fd, command.nickname);
+            return;
+        }
+        if (command.type == CommandType::Quit) {
+            handle_disconnect(fd, true);
+            return;
+        }
+        if (!send_response(fd, make_error("please login first"))) {
+            handle_disconnect(fd, false);
+        }
+        return;
+    }
+
+    if (command.type == CommandType::Quit) {
+        handle_disconnect(fd, true);
+        return;
+    }
+
+    if (command.type == CommandType::Login) {
+        if (!send_response(fd, make_error("invalid command"))) {
+            handle_disconnect(fd, false);
+        }
+        return;
+    }
+
+    if (!send_response(fd, make_error("invalid command"))) {
+        handle_disconnect(fd, false);
+    }
+}
+
+void ChatServer::handle_login(int fd, const std::string& nickname)
+{
+    if (clients_.nickname_in_use(nickname)) {
+        if (!send_response(fd, make_error("nickname already used"))) {
+            handle_disconnect(fd, false);
+        }
+        return;
+    }
+
+    if (!clients_.login(fd, nickname)) {
+        if (!send_response(fd, make_error("invalid command"))) {
+            handle_disconnect(fd, false);
+        }
+        return;
+    }
+
+    if (!send_response(fd, make_ok("login successful"))) {
+        handle_disconnect(fd, false);
+        return;
+    }
+
+    logger_.log_login(nickname);
+    broadcast_system(nickname + " online", fd);
+}
+
+void ChatServer::handle_disconnect(int fd, bool normal_quit)
+{
+    ClientInfo* client = clients_.find_by_fd(fd);
+    if (client == nullptr) {
+        return;
+    }
+
+    const bool was_logged_in = client->logged_in;
+    const std::string nickname = client->nickname;
+
+    close_client(fd);
+
+    if (!was_logged_in) {
+        return;
+    }
+
+    if (normal_quit) {
+        logger_.log_quit(nickname);
+    } else {
+        logger_.log_abnormal_disconnect(nickname);
+    }
+    broadcast_system(nickname + " offline", fd);
+}
+
+void ChatServer::broadcast_system(const std::string& message, int excluded_fd)
+{
+    std::vector<int> fds = clients_.fds();
+    for (int fd : fds) {
+        if (fd == excluded_fd) {
+            continue;
+        }
+
+        const ClientInfo* client = clients_.find_by_fd(fd);
+        if (client == nullptr || !client->logged_in) {
+            continue;
+        }
+
+        if (!send_response(fd, make_system(message))) {
+            handle_disconnect(fd, false);
+        }
+    }
+}
+
+bool ChatServer::send_response(int fd, const std::string& response)
+{
+    std::size_t sent_total = 0;
+    while (sent_total < response.size()) {
+        ssize_t sent = send(fd, response.data() + sent_total, response.size() - sent_total, MSG_NOSIGNAL);
+        if (sent < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            logger_.log_error("send failed on fd " + std::to_string(fd) + ": " + std::strerror(errno));
+            return false;
+        }
+        if (sent == 0) {
+            logger_.log_error("send returned 0 on fd " + std::to_string(fd));
+            return false;
+        }
+        sent_total += static_cast<std::size_t>(sent);
+    }
+    return true;
 }
 
 void ChatServer::close_client(int fd)
