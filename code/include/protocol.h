@@ -36,6 +36,16 @@ struct Command {
     std::string error;
 };
 
+class LineBuffer {
+public:
+    std::vector<std::string> append(const std::string& bytes);
+    const std::string& pending() const;
+    void clear();
+
+private:
+    std::string buffer_;
+};
+
 bool is_valid_nickname(const std::string& nickname);
 Command parse_client_command(const std::string& line);
 
