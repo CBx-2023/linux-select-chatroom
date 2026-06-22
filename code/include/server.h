@@ -31,6 +31,9 @@ private:
     void handle_client_readable(int fd);
     void process_client_line(int fd, const std::string& line);
     void handle_login(int fd, const std::string& nickname);
+    void handle_group_message(int fd, const std::string& content);
+    void handle_private_message(int fd, const std::string& target, const std::string& content);
+    void handle_list(int fd);
     void handle_disconnect(int fd, bool normal_quit);
     void broadcast_system(const std::string& message, int excluded_fd);
     bool send_response(int fd, const std::string& response);

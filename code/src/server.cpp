@@ -277,8 +277,18 @@ void ChatServer::process_client_line(int fd, const std::string& line)
         return;
     }
 
-    if (!send_response(fd, make_error("invalid command"))) {
-        handle_disconnect(fd, false);
+    if (command.type == CommandType::Message) {
+        handle_group_message(fd, command.content);
+        return;
+    }
+
+    if (command.type == CommandType::PrivateMessage) {
+        handle_private_message(fd, command.target, command.content);
+        return;
+    }
+
+    if (command.type == CommandType::List) {
+        handle_list(fd);
     }
 }
 
@@ -305,6 +315,63 @@ void ChatServer::handle_login(int fd, const std::string& nickname)
 
     logger_.log_login(nickname);
     broadcast_system(nickname + " online", fd);
+}
+
+void ChatServer::handle_group_message(int fd, const std::string& content)
+{
+    const ClientInfo* sender = clients_.find_by_fd(fd);
+    if (sender == nullptr || !sender->logged_in) {
+        return;
+    }
+
+    const std::string response = make_chat(sender->nickname, content);
+    std::vector<int> fds = clients_.fds();
+    for (int target_fd : fds) {
+        if (target_fd == fd) {
+            continue;
+        }
+
+        const ClientInfo* target = clients_.find_by_fd(target_fd);
+        if (target == nullptr || !target->logged_in) {
+            continue;
+        }
+
+        if (!send_response(target_fd, response)) {
+            handle_disconnect(target_fd, false);
+        }
+    }
+
+    logger_.log_group_chat(sender->nickname, content);
+}
+
+void ChatServer::handle_private_message(int fd, const std::string& target, const std::string& content)
+{
+    const ClientInfo* sender = clients_.find_by_fd(fd);
+    if (sender == nullptr || !sender->logged_in) {
+        return;
+    }
+
+    const ClientInfo* target_client = clients_.find_by_nickname(target);
+    if (target_client == nullptr || !target_client->logged_in) {
+        if (!send_response(fd, make_error("user not online"))) {
+            handle_disconnect(fd, false);
+        }
+        return;
+    }
+
+    if (!send_response(target_client->fd, make_private(sender->nickname, content))) {
+        handle_disconnect(target_client->fd, false);
+        return;
+    }
+
+    logger_.log_private_chat(sender->nickname, target, content);
+}
+
+void ChatServer::handle_list(int fd)
+{
+    if (!send_response(fd, make_userlist(clients_.online_users()))) {
+        handle_disconnect(fd, false);
+    }
 }
 
 void ChatServer::handle_disconnect(int fd, bool normal_quit)
