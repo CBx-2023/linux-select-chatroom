@@ -179,12 +179,44 @@ void test_select_loop_prints_notice_when_server_closes()
     assert(err.str().empty());
 }
 
+void test_select_loop_requires_command_processor()
+{
+    Fd listener(create_loopback_listener());
+    int port = listener_port(listener.get());
+    LoopServerResult result;
+
+    std::thread server([&]() {
+        Fd client(accept(listener.get(), nullptr, nullptr));
+        assert(client.get() >= 0);
+        result.login = recv_line(client.get());
+        send_all(client.get(), "OK welcome\n");
+        result.command = recv_line(client.get());
+    });
+
+    Pipe input;
+    input.write_text("raw text\n");
+
+    std::ostringstream out;
+    std::ostringstream err;
+    chatroom::ChatClient client(out, err);
+    assert(client.connect_and_login({"127.0.0.1", port, "alice"}));
+
+    bool ok = client.run_event_loop(input.read_fd(), {});
+
+    server.join();
+    assert(!ok);
+    assert(result.login == "LOGIN alice\n");
+    assert(result.command.empty());
+    assert(err.str().find("Input processor is required") != std::string::npos);
+}
+
 }  // namespace
 
 int main()
 {
     test_select_loop_processes_input_and_server_messages_without_blocking();
     test_select_loop_prints_notice_when_server_closes();
+    test_select_loop_requires_command_processor();
 
     std::cout << "client select loop tests passed\n";
     return 0;

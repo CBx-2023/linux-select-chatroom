@@ -1,4 +1,5 @@
 #include "client.h"
+#include "input_handler.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -38,14 +39,6 @@ bool pop_line(std::string& buffer, std::string& line)
     line = buffer.substr(0, newline + 1);
     buffer.erase(0, newline + 1);
     return true;
-}
-
-UserInputResult pass_through_input(const std::string& line)
-{
-    if (line.empty()) {
-        return {};
-    }
-    return {line + "\n", "", false};
 }
 
 }  // namespace
@@ -143,8 +136,13 @@ bool ChatClient::run_event_loop(int input_fd, const UserInputProcessor& process_
         err_ << "Client is not connected\n";
         return false;
     }
+    if (!process_input) {
+        err_ << "Input processor is required\n";
+        close_connection();
+        return false;
+    }
 
-    UserInputProcessor processor = process_input ? process_input : pass_through_input;
+    UserInputProcessor processor = process_input;
     std::string input_buffer;
     std::string server_buffer;
 
@@ -291,6 +289,11 @@ int main(int argc, char* argv[])
     if (!client.connect_and_login(options)) {
         return 1;
     }
-    return client.run_event_loop(STDIN_FILENO, {}) ? 0 : 1;
+
+    chatroom::InputHandler input_handler;
+    bool completed = client.run_event_loop(STDIN_FILENO, [&input_handler](const std::string& line) {
+        return input_handler.parse(line);
+    });
+    return completed ? 0 : 1;
 }
 #endif
