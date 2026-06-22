@@ -84,7 +84,7 @@ void ChatServer::stop()
 {
     running_ = false;
 
-    std::vector<int> fds(client_fds_.begin(), client_fds_.end());
+    std::vector<int> fds = clients_.fds();
     for (int fd : fds) {
         close_client(fd);
     }
@@ -106,7 +106,7 @@ bool ChatServer::run_once(int timeout_ms)
     FD_SET(listen_fd_, &read_fds);
     int max_fd = listen_fd_;
 
-    for (int fd : client_fds_) {
+    for (int fd : clients_.fds()) {
         FD_SET(fd, &read_fds);
         if (fd > max_fd) {
             max_fd = fd;
@@ -139,7 +139,7 @@ bool ChatServer::run_once(int timeout_ms)
         }
     }
 
-    std::vector<int> fds(client_fds_.begin(), client_fds_.end());
+    std::vector<int> fds = clients_.fds();
     for (int fd : fds) {
         if (FD_ISSET(fd, &read_fds)) {
             handle_client_readable(fd);
@@ -163,7 +163,7 @@ std::uint16_t ChatServer::port() const
 
 std::size_t ChatServer::client_count() const
 {
-    return client_fds_.size();
+    return clients_.client_count();
 }
 
 bool ChatServer::handle_new_client()
@@ -179,7 +179,10 @@ bool ChatServer::handle_new_client()
         return false;
     }
 
-    client_fds_.insert(client_fd);
+    if (!clients_.add_client(client_fd)) {
+        close(client_fd);
+        return false;
+    }
     return true;
 }
 
@@ -194,10 +197,8 @@ void ChatServer::handle_client_readable(int fd)
 
 void ChatServer::close_client(int fd)
 {
-    auto it = client_fds_.find(fd);
-    if (it != client_fds_.end()) {
+    if (clients_.remove_client(fd)) {
         close(fd);
-        client_fds_.erase(it);
     }
 }
 

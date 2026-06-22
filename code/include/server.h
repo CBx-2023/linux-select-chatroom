@@ -1,9 +1,10 @@
 #ifndef CHATROOM_SERVER_H
 #define CHATROOM_SERVER_H
 
+#include "client_manager.h"
+
 #include <cstddef>
 #include <cstdint>
-#include <set>
 
 namespace chatroom {
 
@@ -31,7 +32,7 @@ private:
     std::uint16_t port_;
     int listen_fd_ = -1;
     bool running_ = false;
-    std::set<int> client_fds_;
+    ClientManager clients_;
 };
 
 }  // namespace chatroom
