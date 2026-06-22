@@ -1,4 +1,5 @@
 #include "client.h"
+#include "display.h"
 #include "input_handler.h"
 
 #include <arpa/inet.h>
@@ -175,7 +176,7 @@ bool ChatClient::run_event_loop(int input_fd, const UserInputProcessor& process_
             }
             if (count == 0) {
                 if (!server_buffer.empty()) {
-                    out_ << strip_line_end(server_buffer) << "\n";
+                    out_ << Display::format_server_line(strip_line_end(server_buffer)) << "\n";
                 }
                 out_ << "Server connection closed\n";
                 close_connection();
@@ -185,7 +186,7 @@ bool ChatClient::run_event_loop(int input_fd, const UserInputProcessor& process_
             server_buffer.append(buffer, static_cast<std::size_t>(count));
             std::string line;
             while (pop_line(server_buffer, line)) {
-                out_ << strip_line_end(line) << "\n";
+                out_ << Display::format_server_line(strip_line_end(line)) << "\n";
             }
         }
 

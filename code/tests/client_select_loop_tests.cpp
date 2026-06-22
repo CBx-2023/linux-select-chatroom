@@ -148,7 +148,7 @@ void test_select_loop_processes_input_and_server_messages_without_blocking()
     assert(!ok);
     assert(result.login == "LOGIN alice\n");
     assert(result.command == "typed text\n");
-    assert(out.str().find("hello while typing") != std::string::npos);
+    assert(out.str().find("[system] hello while typing") != std::string::npos);
     assert(out.str().find("Server connection closed") != std::string::npos);
     assert(err.str().empty());
 }
