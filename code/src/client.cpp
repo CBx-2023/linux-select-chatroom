@@ -2,6 +2,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -25,6 +26,26 @@ std::string strip_line_end(std::string value)
         value.pop_back();
     }
     return value;
+}
+
+bool pop_line(std::string& buffer, std::string& line)
+{
+    std::size_t newline = buffer.find('\n');
+    if (newline == std::string::npos) {
+        return false;
+    }
+
+    line = buffer.substr(0, newline + 1);
+    buffer.erase(0, newline + 1);
+    return true;
+}
+
+UserInputResult pass_through_input(const std::string& line)
+{
+    if (line.empty()) {
+        return {};
+    }
+    return {line + "\n", "", false};
 }
 
 }  // namespace
@@ -116,6 +137,93 @@ bool ChatClient::connect_and_login(const ClientOptions& options)
     return false;
 }
 
+bool ChatClient::run_event_loop(int input_fd, const UserInputProcessor& process_input)
+{
+    if (socket_fd_ < 0) {
+        err_ << "Client is not connected\n";
+        return false;
+    }
+
+    UserInputProcessor processor = process_input ? process_input : pass_through_input;
+    std::string input_buffer;
+    std::string server_buffer;
+
+    while (true) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(socket_fd_, &read_fds);
+        FD_SET(input_fd, &read_fds);
+
+        int max_fd = socket_fd_ > input_fd ? socket_fd_ : input_fd;
+        int ready = select(max_fd + 1, &read_fds, nullptr, nullptr, nullptr);
+        if (ready < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            err_ << "select failed: " << std::strerror(errno) << "\n";
+            return false;
+        }
+
+        if (FD_ISSET(socket_fd_, &read_fds)) {
+            char buffer[512];
+            ssize_t count = recv(socket_fd_, buffer, sizeof(buffer), 0);
+            if (count < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                err_ << "Receive failed: " << std::strerror(errno) << "\n";
+                close_connection();
+                return false;
+            }
+            if (count == 0) {
+                if (!server_buffer.empty()) {
+                    out_ << strip_line_end(server_buffer) << "\n";
+                }
+                out_ << "Server connection closed\n";
+                close_connection();
+                return false;
+            }
+
+            server_buffer.append(buffer, static_cast<std::size_t>(count));
+            std::string line;
+            while (pop_line(server_buffer, line)) {
+                out_ << strip_line_end(line) << "\n";
+            }
+        }
+
+        if (FD_ISSET(input_fd, &read_fds)) {
+            char buffer[512];
+            ssize_t count = read(input_fd, buffer, sizeof(buffer));
+            if (count < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                err_ << "Input read failed: " << std::strerror(errno) << "\n";
+                return false;
+            }
+            if (count == 0) {
+                return true;
+            }
+
+            input_buffer.append(buffer, static_cast<std::size_t>(count));
+            std::string line;
+            while (pop_line(input_buffer, line)) {
+                UserInputResult result = processor(strip_line_end(line));
+                if (!result.local_error.empty()) {
+                    err_ << result.local_error << "\n";
+                }
+                if (!result.command.empty() && !send_all(result.command)) {
+                    close_connection();
+                    return false;
+                }
+                if (result.should_exit) {
+                    return true;
+                }
+            }
+        }
+    }
+}
+
 void ChatClient::close_connection()
 {
     if (socket_fd_ >= 0) {
@@ -180,6 +288,9 @@ int main(int argc, char* argv[])
     }
 
     chatroom::ChatClient client(std::cout, std::cerr);
-    return client.connect_and_login(options) ? 0 : 1;
+    if (!client.connect_and_login(options)) {
+        return 1;
+    }
+    return client.run_event_loop(STDIN_FILENO, {}) ? 0 : 1;
 }
 #endif

@@ -2,6 +2,7 @@
 #define CHATROOM_CLIENT_H
 
 #include <iosfwd>
+#include <functional>
 #include <string>
 
 namespace chatroom {
@@ -11,6 +12,14 @@ struct ClientOptions {
     int port = 0;
     std::string nickname;
 };
+
+struct UserInputResult {
+    std::string command;
+    std::string local_error;
+    bool should_exit = false;
+};
+
+using UserInputProcessor = std::function<UserInputResult(const std::string&)>;
 
 bool parse_client_options(int argc, char* argv[], ClientOptions& options, std::ostream& err);
 
@@ -23,6 +32,7 @@ public:
     ChatClient& operator=(const ChatClient&) = delete;
 
     bool connect_and_login(const ClientOptions& options);
+    bool run_event_loop(int input_fd, const UserInputProcessor& process_input);
     void close_connection();
 
 private:
