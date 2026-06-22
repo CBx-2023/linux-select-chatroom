@@ -6,13 +6,21 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <sys/types.h>
 
 namespace chatroom {
 
+using SendFunction = std::function<ssize_t(int, const char*, std::size_t)>;
+using ReceiveFunction = std::function<ssize_t(int, char*, std::size_t)>;
+
 class ChatServer {
 public:
-    explicit ChatServer(std::uint16_t port, std::string log_path = "server.log");
+    explicit ChatServer(std::uint16_t port,
+                        std::string log_path = "server.log",
+                        SendFunction send_function = SendFunction(),
+                        ReceiveFunction receive_function = ReceiveFunction());
     ~ChatServer();
 
     ChatServer(const ChatServer&) = delete;
@@ -44,6 +52,8 @@ private:
     bool running_ = false;
     ClientManager clients_;
     Logger logger_;
+    SendFunction send_function_;
+    ReceiveFunction receive_function_;
 };
 
 }  // namespace chatroom

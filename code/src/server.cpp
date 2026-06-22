@@ -20,6 +20,16 @@ namespace {
 constexpr int kListenBacklog = 16;
 constexpr std::size_t kRecvBufferBytes = 512;
 
+ssize_t default_send(int fd, const char* data, std::size_t length)
+{
+    return send(fd, data, length, MSG_NOSIGNAL);
+}
+
+ssize_t default_receive(int fd, char* data, std::size_t length)
+{
+    return recv(fd, data, length, 0);
+}
+
 void print_errno(const std::string& action)
 {
     std::cerr << action << " failed: " << std::strerror(errno) << '\n';
@@ -27,9 +37,21 @@ void print_errno(const std::string& action)
 
 }  // namespace
 
-ChatServer::ChatServer(std::uint16_t port, std::string log_path)
-    : port_(port), logger_(std::move(log_path))
+ChatServer::ChatServer(std::uint16_t port,
+                       std::string log_path,
+                       SendFunction send_function,
+                       ReceiveFunction receive_function)
+    : port_(port),
+      logger_(std::move(log_path)),
+      send_function_(std::move(send_function)),
+      receive_function_(std::move(receive_function))
 {
+    if (!send_function_) {
+        send_function_ = default_send;
+    }
+    if (!receive_function_) {
+        receive_function_ = default_receive;
+    }
 }
 
 ChatServer::~ChatServer()
@@ -201,7 +223,7 @@ void ChatServer::handle_client_readable(int fd)
     }
 
     char buffer[kRecvBufferBytes];
-    ssize_t bytes_read = recv(fd, buffer, sizeof(buffer), 0);
+    ssize_t bytes_read = receive_function_(fd, buffer, sizeof(buffer));
     if (bytes_read == 0) {
         handle_disconnect(fd, false);
         return;
@@ -421,7 +443,7 @@ bool ChatServer::send_response(int fd, const std::string& response)
 {
     std::size_t sent_total = 0;
     while (sent_total < response.size()) {
-        ssize_t sent = send(fd, response.data() + sent_total, response.size() - sent_total, MSG_NOSIGNAL);
+        ssize_t sent = send_function_(fd, response.data() + sent_total, response.size() - sent_total);
         if (sent < 0) {
             if (errno == EINTR) {
                 continue;
