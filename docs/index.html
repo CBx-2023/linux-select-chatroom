@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Linux C++ TCP Select 多人聊天室使用文档</title>
+  <meta name="description" content="Linux C++ TCP select 多人聊天室项目的 GitHub Pages 使用文档。">
+  <link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-grid">
+      <div>
+        <p class="eyebrow">Linux C++ Course Project</p>
+        <h1>TCP Select 多人聊天室使用文档</h1>
+        <p class="lead">
+          本页面是项目的 GitHub Pages 文档首页，用于说明如何在 Linux 终端中编译、启动和验收聊天室。
+          它不是浏览器版聊天室，也不会在网页内建立 TCP 连接。
+        </p>
+      </div>
+      <aside class="quick-card" aria-label="快速开始">
+        <h2>快速开始</h2>
+        <ol>
+          <li><code>make -C code</code></li>
+          <li><code>cd code</code></li>
+          <li><code>./server 8888</code></li>
+          <li><code>./client 127.0.0.1 8888 alice</code></li>
+        </ol>
+      </aside>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="toc" aria-label="页面目录">
+      <a href="#overview">项目简介</a>
+      <a href="#features">功能清单</a>
+      <a href="#structure">目录结构</a>
+      <a href="#build">编译与运行</a>
+      <a href="#commands">客户端命令</a>
+      <a href="#protocol">协议摘要</a>
+      <a href="#acceptance">手动验收流程</a>
+      <a href="#faq">常见问题</a>
+      <a href="#non-goals">非目标说明</a>
+    </nav>
+
+    <section id="overview" class="section">
+      <h2>项目简介</h2>
+      <p>
+        本项目实现了一个基于 TCP socket 的多人聊天室。服务端运行在 Linux 终端中，使用单进程
+        <code>select</code> 同时监听服务端 socket 和多个客户端 socket；客户端同样通过终端输入消息，
+        支持群聊、私聊、在线用户列表和主动退出。
+      </p>
+      <p>
+        GitHub Pages 只承载这份使用文档，适合从仓库的 <code>/docs</code> 目录发布。真正的聊天室程序需要在
+        Linux 环境中编译并运行 <code>code/server</code> 与 <code>code/client</code>。
+      </p>
+    </section>
+
+    <section id="features" class="section">
+      <h2>功能清单</h2>
+      <div class="feature-grid">
+        <article>
+          <h3>服务端</h3>
+          <ul>
+            <li>使用 TCP socket 接受多个客户端连接。</li>
+            <li>使用 <code>select</code> 管理监听 socket 和客户端 socket。</li>
+            <li>校验昵称格式，拒绝重复昵称。</li>
+            <li>转发群聊消息，只发送给其他在线用户。</li>
+            <li>按昵称投递私聊消息。</li>
+            <li>返回在线用户列表。</li>
+            <li>处理 <code>/quit</code> 和异常断开，清理 fd 与昵称状态。</li>
+            <li>将启动、登录、退出、聊天和错误事件写入 <code>server.log</code>。</li>
+          </ul>
+        </article>
+        <article>
+          <h3>客户端</h3>
+          <ul>
+            <li>启动后连接服务端并发送 <code>LOGIN &lt;nickname&gt;</code>。</li>
+            <li>普通文本自动转换为群聊协议 <code>MSG &lt;content&gt;</code>。</li>
+            <li>支持 <code>/w</code>、<code>/list</code>、<code>/quit</code> 三个终端命令。</li>
+            <li>将服务端响应格式化为系统通知、群聊、私聊、在线列表、确认或错误信息。</li>
+            <li>忽略空输入，并在本地拦截不完整的私聊命令。</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="structure" class="section">
+      <h2>目录结构</h2>
+      <pre><code>.
+├── code/
+│   ├── Makefile
+│   ├── README.md
+│   ├── include/
+│   │   ├── client.h
+│   │   ├── client_manager.h
+│   │   ├── display.h
+│   │   ├── input_handler.h
+│   │   ├── logger.h
+│   │   ├── protocol.h
+│   │   └── server.h
+│   ├── src/
+│   │   ├── client.cpp
+│   │   ├── client_manager.cpp
+│   │   ├── display.cpp
+│   │   ├── input_handler.cpp
+│   │   ├── logger.cpp
+│   │   ├── protocol.cpp
+│   │   └── server.cpp
+│   ├── tests/
+│   └── validation_checklist.md
+├── docs/
+│   ├── index.html
+│   └── assets/site.css
+└── issues/</code></pre>
+      <p>
+        <code>code/</code> 是 C++ 源码和测试资料所在目录；<code>docs/</code> 是 GitHub Pages 静态文档目录。
+      </p>
+    </section>
+
+    <section id="build" class="section">
+      <h2>编译与运行</h2>
+
+      <h3>环境要求</h3>
+      <ul>
+        <li>Linux 或兼容 POSIX socket 的环境。</li>
+        <li>支持 C++17 的编译器，例如 <code>g++</code>。</li>
+        <li><code>make</code>。</li>
+      </ul>
+
+      <h3>编译命令</h3>
+      <p>在仓库根目录执行：</p>
+      <pre><code>make -C code</code></pre>
+      <p>
+        该命令会进入 <code>code</code> 目录执行 Makefile，生成 <code>code/server</code> 和
+        <code>code/client</code> 两个可执行文件。
+      </p>
+
+      <h3>启动服务端</h3>
+      <p>在 <code>code</code> 目录中启动服务端，监听端口 <code>8888</code>：</p>
+      <pre><code>cd code
+./server 8888</code></pre>
+      <p>
+        <code>./server 8888</code> 表示让服务端绑定并监听 8888 端口。服务端运行期间保持该终端打开。
+      </p>
+
+      <h3>启动客户端</h3>
+      <p>另开终端进入 <code>code</code> 目录，连接本机服务端并使用昵称 <code>alice</code> 登录：</p>
+      <pre><code>cd code
+./client 127.0.0.1 8888 alice</code></pre>
+      <p>
+        <code>./client 127.0.0.1 8888 alice</code> 的三个参数分别是服务端 IP、服务端端口和客户端昵称。
+        可以再打开其他终端启动 <code>bob</code>、<code>carol</code> 等不同昵称的客户端：
+      </p>
+      <pre><code>./client 127.0.0.1 8888 bob
+./client 127.0.0.1 8888 carol</code></pre>
+    </section>
+
+    <section id="commands" class="section">
+      <h2>客户端命令</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>终端输入</th>
+              <th>客户端发送</th>
+              <th>作用</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>hello everyone</code></td>
+              <td><code>MSG hello everyone</code></td>
+              <td>发送群聊消息给其他在线用户。</td>
+            </tr>
+            <tr>
+              <td><code>/w bob hello</code></td>
+              <td><code>PRIVATE bob hello</code></td>
+              <td>发送私聊消息，只投递给昵称为 <code>bob</code> 的在线用户。</td>
+            </tr>
+            <tr>
+              <td><code>/list</code></td>
+              <td><code>LIST</code></td>
+              <td>查询当前在线昵称列表。</td>
+            </tr>
+            <tr>
+              <td><code>/quit</code></td>
+              <td><code>QUIT</code></td>
+              <td>主动退出客户端并通知服务端清理状态。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        注意：昵称长度为 1 到 20 个字符，只允许英文字母、数字和下划线。空输入会被忽略；
+        <code>/w</code> 缺少目标昵称或消息正文时，客户端会在本地提示用法并不会发送给服务端。
+      </p>
+    </section>
+
+    <section id="protocol" class="section">
+      <h2>协议摘要</h2>
+      <p>
+        客户端和服务端使用按行分隔的文本协议，每条协议行以换行结束。单行最大长度为 1024 字节，
+        超出会得到 <code>ERROR message too long</code>。
+      </p>
+
+      <h3>客户端请求</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>协议行</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>LOGIN &lt;nickname&gt;</code></td>
+              <td>连接后登录昵称；登录前只能发送登录或退出请求。</td>
+            </tr>
+            <tr>
+              <td><code>MSG &lt;content&gt;</code></td>
+              <td>群聊内容，服务端转发为 <code>CHAT &lt;sender&gt; &lt;content&gt;</code>。</td>
+            </tr>
+            <tr>
+              <td><code>PRIVATE &lt;target&gt; &lt;content&gt;</code></td>
+              <td>私聊内容，服务端转发为 <code>PRIVATE &lt;sender&gt; &lt;content&gt;</code>。</td>
+            </tr>
+            <tr>
+              <td><code>LIST</code></td>
+              <td>请求在线用户列表。</td>
+            </tr>
+            <tr>
+              <td><code>QUIT</code></td>
+              <td>主动退出。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>服务端响应</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>响应前缀</th>
+              <th>示例</th>
+              <th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>OK</code></td>
+              <td><code>OK login successful</code></td>
+              <td>操作成功确认。</td>
+            </tr>
+            <tr>
+              <td><code>ERROR</code></td>
+              <td><code>ERROR nickname already used</code></td>
+              <td>请求格式、登录状态、昵称或投递目标错误。</td>
+            </tr>
+            <tr>
+              <td><code>SYSTEM</code></td>
+              <td><code>SYSTEM bob online</code></td>
+              <td>用户上下线等系统通知。</td>
+            </tr>
+            <tr>
+              <td><code>CHAT</code></td>
+              <td><code>CHAT alice hello</code></td>
+              <td>来自其他用户的群聊消息。</td>
+            </tr>
+            <tr>
+              <td><code>PRIVATE</code></td>
+              <td><code>PRIVATE alice secret</code></td>
+              <td>来自其他用户的私聊消息。</td>
+            </tr>
+            <tr>
+              <td><code>USERLIST</code></td>
+              <td><code>USERLIST alice,bob,carol</code></td>
+              <td>当前在线用户昵称列表，使用逗号分隔。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="acceptance" class="section">
+      <h2>手动验收流程</h2>
+      <ol class="steps">
+        <li>在仓库根目录执行 <code>make -C code</code>，确认生成 <code>code/server</code> 和 <code>code/client</code>。</li>
+        <li>进入 <code>code</code> 目录，执行 <code>./server 8888</code> 启动服务端。</li>
+        <li>分别打开至少三个终端，运行 <code>./client 127.0.0.1 8888 alice</code>、<code>./client 127.0.0.1 8888 bob</code> 和 <code>./client 127.0.0.1 8888 carol</code>。</li>
+        <li>在一个客户端输入普通文本，确认其他客户端收到群聊消息。</li>
+        <li>在 <code>alice</code> 中输入 <code>/w bob hello</code>，确认只有 <code>bob</code> 收到私聊。</li>
+        <li>输入 <code>/list</code>，确认返回当前在线用户列表。</li>
+        <li>尝试再启动一个昵称同为 <code>alice</code> 的客户端，确认收到 <code>ERROR nickname already used</code>。</li>
+        <li>使用 raw TCP 工具发送未登录消息或非法命令，确认服务端返回错误且继续运行。</li>
+        <li>发送超过 1024 字节的协议行，确认返回 <code>ERROR message too long</code> 且其他客户端不受影响。</li>
+        <li>在一个客户端输入 <code>/quit</code>，确认客户端退出、其他用户收到离线通知。</li>
+        <li>直接关闭一个客户端终端，确认服务端清理异常断开连接，其他用户仍可聊天。</li>
+        <li>检查 <code>server.log</code>，确认启动、登录、退出、异常断开、群聊、私聊和错误事件有记录。</li>
+      </ol>
+      <p>
+        需要留存验收证据时，可参考 <code>code/validation_checklist.md</code> 逐项记录结果和截图。
+      </p>
+    </section>
+
+    <section id="faq" class="section">
+      <h2>常见问题</h2>
+      <details>
+        <summary>为什么打开 GitHub Pages 后没有聊天室输入框？</summary>
+        <p>
+          因为 GitHub Pages 只是静态使用文档，不是浏览器版聊天室。项目通信基于 Linux TCP socket，
+          需要运行 <code>./server</code> 和 <code>./client</code>。
+        </p>
+      </details>
+      <details>
+        <summary><code>make -C code</code> 失败怎么办？</summary>
+        <p>
+          先确认系统安装了 <code>make</code> 和支持 C++17 的 <code>g++</code>。如果编译器版本较旧，
+          请升级编译器或在课程实验环境中运行。
+        </p>
+      </details>
+      <details>
+        <summary><code>./server 8888</code> 提示端口不可用怎么办？</summary>
+        <p>
+          可能已有进程占用了 8888 端口。可以停止占用进程，或选择其他端口并让客户端使用相同端口连接。
+        </p>
+      </details>
+      <details>
+        <summary>为什么第二个 <code>alice</code> 登录失败？</summary>
+        <p>
+          服务端要求在线昵称唯一。第二个相同昵称会收到 <code>ERROR nickname already used</code>。
+        </p>
+      </details>
+      <details>
+        <summary>为什么 <code>/w</code> 没有发出去？</summary>
+        <p>
+          <code>/w</code> 必须同时包含目标昵称和消息正文，例如 <code>/w bob hello</code>。
+          缺少参数时客户端会本地提示 <code>Usage: /w &lt;nickname&gt; &lt;message&gt;</code>。
+        </p>
+      </details>
+    </section>
+
+    <section id="non-goals" class="section">
+      <h2>非目标说明</h2>
+      <p>本项目聚焦 Linux C++ TCP socket、<code>select</code> 多路复用和基础聊天室协议，以下内容不属于当前目标：</p>
+      <ul>
+        <li>浏览器版聊天室或 WebSocket 前端。</li>
+        <li>账号密码、权限系统、管理员踢人或封禁。</li>
+        <li>数据库持久化、离线消息、历史消息查询。</li>
+        <li>图形界面、移动端应用或跨平台 UI。</li>
+        <li>端到端加密、文件传输和大规模生产部署能力。</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>发布方式：GitHub Pages 可从仓库 <code>/docs</code> 目录直接发布此纯静态文档站点。</p>
+    </div>
+  </footer>
+</body>
+</html>
