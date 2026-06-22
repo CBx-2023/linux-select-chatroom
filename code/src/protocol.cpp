@@ -85,11 +85,11 @@ bool is_valid_nickname(const std::string& nickname) {
 }
 
 Command parse_client_command(const std::string& raw_line) {
-    if (raw_line.size() > kMaxMessageBytes) {
+    const std::string line = without_trailing_cr(raw_line);
+    if (line.size() > kMaxMessageBytes) {
         return invalid_command("message too long");
     }
 
-    const std::string line = without_trailing_cr(raw_line);
     const std::size_t first_space = line.find(' ');
     const std::string verb =
         first_space == std::string::npos ? line : line.substr(0, first_space);

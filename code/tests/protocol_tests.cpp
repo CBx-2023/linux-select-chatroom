@@ -127,6 +127,22 @@ void test_parse_enforces_1024_byte_limit() {
                     "message too long", "1025-byte command rejected");
 }
 
+void test_parse_ignores_optional_cr_before_1024_byte_limit() {
+    const std::string largest_allowed_with_cr =
+        "MSG " + std::string(1020, 'x') + "\r";
+    require(largest_allowed_with_cr.size() == chatroom::kMaxMessageBytes + 1,
+            "test fixture includes exact max payload plus CR");
+    require(chatroom::parse_client_command(largest_allowed_with_cr).type ==
+                chatroom::CommandType::Message,
+            "1024-byte command with trailing CR accepted");
+
+    const std::string too_large_with_cr =
+        "MSG " + std::string(1021, 'x') + "\r";
+    require_invalid(chatroom::parse_client_command(too_large_with_cr),
+                    "message too long",
+                    "1025-byte command with trailing CR rejected");
+}
+
 void test_response_helpers_are_newline_terminated() {
     require_equal(chatroom::make_ok("welcome"), "OK welcome\n", "OK response");
     require_equal(chatroom::make_error("bad"), "ERROR bad\n",
@@ -149,6 +165,7 @@ int main() {
     test_parse_valid_commands();
     test_parse_invalid_commands_return_structured_errors();
     test_parse_enforces_1024_byte_limit();
+    test_parse_ignores_optional_cr_before_1024_byte_limit();
     test_response_helpers_are_newline_terminated();
     return 0;
 }
