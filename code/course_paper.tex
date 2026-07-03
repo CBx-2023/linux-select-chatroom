@@ -36,7 +36,9 @@
   citecolor=black,
   urlcolor=blue,
   pdftitle={基于 TCP Socket 与 select 的多人聊天室系统},
-  pdfauthor={Linux 高级编程课程设计}
+  pdfauthor={曹博雄},
+  pdfsubject={Linux 高级编程课程设计},
+  pdfkeywords={Linux, TCP Socket, select, 多人聊天室, C++}
 }
 
 \lstdefinestyle{cppstyle}{
@@ -82,7 +84,10 @@
 \vspace{0.7em}
 {\normalsize 《Linux 高级编程》课程设计报告}\\
 \vspace{0.5em}
-{\small 作者：\underline{\hspace{3.5cm}} \quad 学号：\underline{\hspace{3.5cm}} \quad 日期：2026 年 7 月}\\
+{\small 作者：曹博雄 \quad 学号：2023102959 \quad 日期：2026 年 7 月}\\
+\vspace{0.35em}
+{\footnotesize 项目仓库：\url{https://github.com/CBx-2023/linux-select-chatroom}}\\
+{\footnotesize GitHub Pages 文档：\url{https://cbx-2023.github.io/linux-select-chatroom/}}\\
 \vspace{1.1em}
 \end{center}
 
@@ -145,7 +150,7 @@
 
 项目代码位于 \code{code/} 目录，主要结构如表~\ref{tab:files} 所示。
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{主要文件与职责}
 \label{tab:files}
@@ -216,7 +221,7 @@ int ready = select(max_fd + 1, &read_fds,
 
 系统使用按行分隔的文本协议。文本协议便于调试，也便于使用终端或脚本模拟客户端。客户端命令和服务端响应如表~\ref{tab:protocol} 所示。
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{聊天室文本协议}
 \label{tab:protocol}
@@ -308,7 +313,7 @@ send_response(target_client->fd,
 
 \code{InputHandler} 将用户输入转换为协议命令，如表~\ref{tab:client-command} 所示。空输入会被忽略；\code{/w} 缺少目标或消息内容时，客户端在本地提示错误，不向服务端发送非法命令。
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{客户端输入映射}
 \label{tab:client-command}
@@ -346,7 +351,7 @@ make
 
 本项目包含自动化测试和端到端手动测试。自动化测试覆盖协议解析、客户端状态管理、日志写入、客户端输入转换、显示格式化、客户端连接、客户端 \code{select} 循环、服务端监听、登录生命周期、消息路由和错误处理。主要测试结果如表~\ref{tab:tests} 所示。
 
-\begin{table}[h]
+\begin{table}[ht]
 \centering
 \caption{测试覆盖摘要}
 \label{tab:tests}
