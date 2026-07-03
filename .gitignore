@@ -3,3 +3,9 @@ code/server
 code/client
 code/server.log
 server.log
+code/*.aux
+code/*.fdb_latexmk
+code/*.fls
+code/*.log
+code/*.out
+code/*.xdv
