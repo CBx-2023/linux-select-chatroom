@@ -57,6 +57,7 @@ make clean
 │   ├── course_paper.md         # 课程论文正文 Markdown 版
 │   ├── course_paper.tex        # 课程论文 TeX 源文件
 │   ├── course_paper.pdf        # 课程论文 PDF 版
+│   ├── course_paper.docx       # 课程论文 Word 版
 │   └── validation_checklist.md # 手动验收清单
 ├── docs/                       # 设计文档和展示页面
 └── issues/                     # CSV 任务拆分和 review 记录
@@ -78,6 +79,7 @@ make clean
 - 课程论文正文：[code/course_paper.md](code/course_paper.md)
 - 顶会风格 TeX 论文：[code/course_paper.tex](code/course_paper.tex)
 - 渲染后的课程论文 PDF：[code/course_paper.pdf](code/course_paper.pdf)
+- 课程论文 Word 版：[code/course_paper.docx](code/course_paper.docx)
 - 设计文档：[docs/superpowers/specs/2026-06-22-chatroom-design.md](docs/superpowers/specs/2026-06-22-chatroom-design.md)
 - 验收清单：[code/validation_checklist.md](code/validation_checklist.md)
 
